@@ -1,6 +1,5 @@
 import time
 import socket
-import sched
 
 UDP_IP = '1.1.1.1'
 UDP_PORT = 10110
