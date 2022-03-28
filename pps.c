@@ -18,13 +18,15 @@ sudo ./pps
 
 */
 
-#define PPS_GPIO 4         /* gpio for output pulse */
-#define PPS_PULSE 10000    /* pulse length in microseconds */
-#define TRIGGER_PULSE 200  /* pulse length in microseconds */
-#define INTERVAL 1000000   /* pulse every second */
-#define SLACK 200          /* slack period to correct time */
-#define NUM_CAMERAS 2      /* number of cameras used */
+#define PPS_GPIO 4          /* gpio for output pulse */
+#define PPS_PULSE 10000     /* pulse length in microseconds */
+#define TRIGGER_PULSE 200   /* pulse length in microseconds */
+#define INTERVAL 1000000    /* pulse every second */
+#define SLACK 200           /* slack period to correct time */
+#define NUM_CAMERAS 2       /* number of cameras used */
+#define UDP_TRIGGER_GPIO 30 /* gpio to output the UDP trigger signal to */
 
+// GPIO 30 is reserved
 static const int cam_gpio[NUM_CAMERAS] = {17, 27};
 static const int cam_phase[NUM_CAMERAS] = {0, 180};
 
@@ -42,77 +44,81 @@ void callback(int gpio, int level, uint32_t tick) {
   uint32_t nextPulse, nextPulseTick, delay, fixed;
   struct timespec tp;
 
-  /*
-     Seconds boundary has arrived.
+  if (level) {
+    /*
+       Seconds boundary has arrived.
 
-     Make several attempts at finding the relationship between the
-     system tick and the clock microsecond.
+       Make several attempts at finding the relationship between the
+       system tick and the clock microsecond.
 
-     Do so by bracketing the call to the clock with calls to get
-     the system tick.
+       Do so by bracketing the call to the clock with calls to get
+       the system tick.
 
-     Escape the loop early if the difference between the two
-     system ticks is zero (can't do any better).
-  */
+       Escape the loop early if the difference between the two
+       system ticks is zero (can't do any better).
+    */
 
-  pulse_tick = rawWaveGetIn(0); /* tick read at pulse start */
-  now_tick = gpioTick();        /* just for interest, to get an idea
-                                   of scheduling delays */
+    pulse_tick = rawWaveGetIn(0); /* tick read at pulse start */
+    now_tick = gpioTick();        /* just for interest, to get an idea
+                                     of scheduling delays */
 
-  tick_diff = 10000000;
+    tick_diff = 10000000;
 
-  for (i = 0; i < 10; i++) {
-    tick1 = gpioTick();
+    for (i = 0; i < 10; i++) {
+      tick1 = gpioTick();
 
-    clock_gettime(CLOCK_REALTIME, &tp);
+      clock_gettime(CLOCK_REALTIME, &tp);
 
-    tick2 = gpioTick();
+      tick2 = gpioTick();
 
-    if ((tick2 - tick1) < tick_diff) {
-      tick_diff = tick2 - tick1;
+      if ((tick2 - tick1) < tick_diff) {
+        tick_diff = tick2 - tick1;
 
-      stamp_tick = tick1;
+        stamp_tick = tick1;
 
-      stamp_micro = ((tp.tv_sec % 1) * 1000000) + ((tp.tv_nsec + 500) / 1000);
+        stamp_micro = ((tp.tv_sec % 1) * 1000000) + ((tp.tv_nsec + 500) / 1000);
 
-      if (tick_diff == 0) break;
+        if (tick_diff == 0) break;
+      }
+    }
+
+    if (inited) {
+      /* correct if early */
+      if (stamp_micro > (INTERVAL / 2)) stamp_micro -= INTERVAL;
+      offby = stamp_micro - (stamp_tick - pulse_tick);
+      drift += offby / 2; /* correct drift, bit of lag */
+    } else {
+      offby = 0;
+      drift = 0;
+    }
+
+    nextPulse = INTERVAL - stamp_micro;
+    nextPulseTick = stamp_tick + nextPulse - drift;
+
+    delay = nextPulseTick - pulse_tick;
+
+    fixed = INTERVAL - SLACK;
+    slack = delay - fixed;
+
+    if (slack < 0) {
+      slack += INTERVAL;
+    }
+    if (!slack) {
+      slack = 1;
+    }
+    *g_slackA = (slack * 4);
+
+    if (inited) {
+      printf("%8d %5d %5d %5d %5d\n", count++, drift, offby,
+             now_tick - pulse_tick, slack);
+    } else {
+      printf("#  count drift offby sched slack\n");
+      inited = 1;
     }
   }
-
-  if (inited) {
-    /* correct if early */
-    if (stamp_micro > (INTERVAL / 2)) stamp_micro -= INTERVAL;
-    offby = stamp_micro - (stamp_tick - pulse_tick);
-    drift += offby / 2; /* correct drift, bit of lag */
-  } else {
-    offby = 0;
-    drift = 0;
-  }
-
-  nextPulse = INTERVAL - stamp_micro;
-  nextPulseTick = stamp_tick + nextPulse - drift;
-
-  delay = nextPulseTick - pulse_tick;
-
-  fixed = INTERVAL - SLACK;
-  slack = delay - fixed;
-
-  if (slack < 0) {
-    slack += INTERVAL;
-  }
-  if (!slack) {
-    slack = 1;
-  }
-  *g_slackA = (slack * 4);
-
-  if (inited) {
-    printf("%8d %5d %5d %5d %5d\n", count++, drift, offby,
-           now_tick - pulse_tick, slack);
-  } else {
-    printf("#  count drift offby sched slack\n");
-    inited = 1;
-  }
 }
+
+void send_udp(int gpio, int level, uint32_t tick) {}
 
 int main(int argc, char *argv[]) {
   int off;
@@ -182,8 +188,6 @@ int main(int argc, char *argv[]) {
         camera[2 * i + 3].flags = 0;
       }
     }
-
-    printf("%d\n", rawWaveAddGeneric(22, camera) /* add data to waveform */);
   }
 
   wave_id = gpioWaveCreate(); /* create waveform from added data */
