@@ -19,8 +19,8 @@ sudo ./pps
 */
 
 #define PPS_GPIO 4         /* gpio for output pulse */
-#define PPS_PULSE 5000     /* pulse length in microseconds */
-#define TRIGGER_PULSE 5000 /* pulse length in microseconds */
+#define PPS_PULSE 10000    /* pulse length in microseconds */
+#define TRIGGER_PULSE 200  /* pulse length in microseconds */
 #define INTERVAL 1000000   /* pulse every second */
 #define SLACK 200          /* slack period to correct time */
 #define NUM_CAMERAS 2      /* number of cameras used */
