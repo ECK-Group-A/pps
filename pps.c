@@ -19,13 +19,15 @@ sudo ./pps
 
 */
 
-#define GPIO    4   /* gpio for output pulse */
+#define PPS_GPIO    4   /* gpio for output pulse */
 #define PPS_PULSE  5000   /* pulse length in microseconds */
-#define TRIGGER_PULSE  200   /* pulse length in microseconds */
+#define TRIGGER_PULSE  5000   /* pulse length in microseconds */
 #define INTERVAL 1000000 /* pulse every second */
 #define SLACK  200 /* slack period to correct time */
+#define NUM_CAMERAS 2 /* number of cameras used */
 
-static int g_gpio    = GPIO;
+static const int cam_gpio[NUM_CAMERAS] = {17, 27};
+static const int cam_phase[NUM_CAMERAS] = {0, 180};
 
 static uint32_t *g_slackA;
 
@@ -126,27 +128,24 @@ int main(int argc, char *argv[])
    rawWave_t pps[3];
    rawWaveInfo_t winf;
 
-   printf("# gpio=%d, slack=%dus, off=%dus\n",
-      g_gpio, SLACK, off);
-
    if (gpioInitialise()<0) return -1;
 
-   gpioSetAlertFunc(g_gpio, callback);     /* set pps callback */
+   gpioSetAlertFunc(PPS_GPIO, callback);     /* set pps callback */
 
-   gpioSetMode(g_gpio, PI_OUTPUT);
+   gpioSetMode(PPS_GPIO, PI_OUTPUT);
 
    pps[0].gpioOn  = 0;
-   pps[0].gpioOff = (1<<g_gpio);
+   pps[0].gpioOff = (1<<PPS_GPIO);
    pps[0].usDelay = SLACK;
    pps[0].flags   = 0;
 
-   pps[1].gpioOn = (1<<g_gpio);
+   pps[1].gpioOn = (1<<PPS_GPIO);
    pps[1].gpioOff = 0;
    pps[1].usDelay = PPS_PULSE;
    pps[1].flags   = WAVE_FLAG_TICK;    /* read tick at start of pulse */
 
    pps[2].gpioOn  = 0;
-   pps[2].gpioOff = (1<<g_gpio);
+   pps[2].gpioOff = (1<<PPS_GPIO);
    pps[2].usDelay = INTERVAL - (PPS_PULSE + SLACK);
    pps[2].flags   = 0;
 
@@ -154,40 +153,43 @@ int main(int argc, char *argv[])
 
    rawWaveAddGeneric(3, pps); /* add data to waveform */
 
-   // for (int cam_idx = 0; cam_idx < 6; cam_idx++) {
-   //    rawWave_t camera[22];
+   for (int cam_idx = 0; cam_idx < NUM_CAMERAS; cam_idx++) {
+      gpioSetMode(cam_gpio[cam_idx], PI_OUTPUT);
+      rawWave_t camera[22];
 
-   //    camera[0].gpioOn  = 0;
-   //    camera[0].gpioOff = (1<<cam_gpio[cam_idx]);
-   //    camera[0].usDelay = SLACK;
-   //    camera[0].flags   = 0;
+      int phase = (1000000 / 10) / 360.0 * cam_phase[cam_idx];
 
-   //    camera[1].gpioOn  = 0;
-   //    camera[1].gpioOff = (1<<cam_gpio[cam_idx]);
-   //    camera[1].usDelay = cam_phase[cam_idx];
-   //    camera[1].flags   = 0;
+      camera[0].gpioOn  = 0;
+      camera[0].gpioOff = (1<<cam_gpio[cam_idx]);
+      camera[0].usDelay = SLACK;
+      camera[0].flags   = 0;
 
-   //    for (int i = 0; i < 20; i+=2) {
-   //       camera[i+2].gpioOn = (1<<cam_gpio[cam_idx]);
-   //       camera[i+2].gpioOff = 0;
-   //       camera[i+2].usDelay = TRIGGER_PULSE;
-   //       camera[i+2].flags   = 0;
+      camera[1].gpioOn  = 0;
+      camera[1].gpioOff = (1<<cam_gpio[cam_idx]);
+      camera[1].usDelay = phase;
+      camera[1].flags   = 0;
 
-   //       if (i != 18) {
-   //          camera[i+3].gpioOn  = 0;
-   //          camera[i+3].gpioOff = (1<<cam_gpio[cam_idx]);
-   //          camera[i+3].usDelay = ((1000000 - SLACK) / 10) - TRIGGER_PULSE;
-   //          camera[i+3].flags   = 0;
-   //       } else {
-   //          camera[i+3].gpioOn  = 0;
-   //          camera[i+3].gpioOff = (1<<cam_gpio[cam_idx]);
-   //          camera[i+3].usDelay = ((1000000 - SLACK) / 10) - TRIGGER_PULSE - cam_phase[cam_idx];
-   //          camera[i+3].flags   = 0;
-   //       }
-   //    }
+      for (int i = 0; i < 10; i++) {
+         camera[2*i+2].gpioOn = (1<<cam_gpio[cam_idx]);
+         camera[2*i+2].gpioOff = 0;
+         camera[2*i+2].usDelay = TRIGGER_PULSE;
+         camera[2*i+2].flags   = 0;
 
-   //    rawWaveAddGeneric(22, camera); /* add data to waveform */
-   // }
+         if (i != 9) {
+            camera[2*i+3].gpioOn  = 0;
+            camera[2*i+3].gpioOff = (1<<cam_gpio[cam_idx]);
+            camera[2*i+3].usDelay = (1000000 / 10) - TRIGGER_PULSE;
+            camera[2*i+3].flags   = 0;
+         } else {
+            camera[2*i+3].gpioOn  = 0;
+            camera[2*i+3].gpioOff = (1<<cam_gpio[cam_idx]);
+            camera[2*i+3].usDelay = (1000000 / 10) - TRIGGER_PULSE - SLACK - phase;
+            camera[2*i+3].flags   = 0;
+         }
+      }
+
+      printf("%d\n", rawWaveAddGeneric(22, camera) /* add data to waveform */);
+   }
 
    wave_id = gpioWaveCreate(); /* create waveform from added data */
 
