@@ -1,9 +1,12 @@
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <pigpio.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/timex.h>
+#include <time.h>
 #include <unistd.h>
 
 /*
@@ -31,6 +34,10 @@ static const int cam_gpio[NUM_CAMERAS] = {17, 27};
 static const int cam_phase[NUM_CAMERAS] = {0, 180};
 
 static uint32_t *g_slackA;
+
+int sock;
+time_t timer;
+struct tm *tm;
 
 void callback(int gpio, int level, uint32_t tick) {
   static int inited = 0, drift = 0, count = 0;
@@ -118,19 +125,85 @@ void callback(int gpio, int level, uint32_t tick) {
   }
 }
 
-void send_udp(int gpio, int level, uint32_t tick) {}
+// Connect to udp broadcast socket
+int udp_connect(char *host, int port) {
+  int sock;
+  struct sockaddr_in addr;
+  int broadcast = 1;
+
+  sock = socket(AF_INET, SOCK_DGRAM, 0);
+  if (sock < 0) {
+    perror("socket");
+    return -1;
+  }
+
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
+  addr.sin_addr.s_addr = inet_addr(host);
+
+  if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    perror("connect");
+    return -1;
+  }
+
+  return sock;
+}
+
+// Calculate NMEA checksum
+unsigned char nmea_checksum(char *sentence) {
+  unsigned char checksum = 0;
+  char *p = sentence;
+
+  while (*p) {
+    checksum ^= *p++;
+  }
+
+  return checksum;
+}
+
+// Send NMEA sentence
+int nmea_send(int sock, char *sentence) {
+  char buffer[1024];
+  int len;
+
+  sprintf(buffer, "$%s*%02X\r\n", sentence, nmea_checksum(sentence));
+  len = strlen(buffer);
+
+  return send(sock, buffer, len, 0);
+}
+
+void send_nmea_time(int gpio, int level, uint32_t tick) {
+  if (level) {
+    char nmea[1024];
+
+    time(&timer);
+    tm = localtime(&timer);
+    sprintf(nmea,
+            "GPRMC,%02d%02d%02d,A,0000.000,N,00000.000,E,000.0,000.0,%02d%02d%"
+            "02d,000.0,W,S",
+            tm->tm_hour, tm->tm_min, tm->tm_sec, tm->tm_mday, tm->tm_mon + 1,
+            (tm->tm_year + 1900) % 100);
+    nmea_send(sock, nmea);
+  }
+}
 
 int main(int argc, char *argv[]) {
   int off;
   int wave_id;
   rawWave_t pps[3];
+  rawWave_t nmea[3];
   rawWaveInfo_t winf;
+
+  // Connect to UDP socket
+  sock = udp_connect("1.1.1.1", 10110);
 
   if (gpioInitialise() < 0) {
     return -1;
   }
 
-  gpioSetAlertFunc(PPS_GPIO, callback); /* set pps callback */
+  gpioSetAlertFunc(PPS_GPIO, callback);               /* set pps callback */
+  gpioSetAlertFunc(UDP_TRIGGER_GPIO, send_nmea_time); /* set udp callback */
 
   gpioSetMode(PPS_GPIO, PI_OUTPUT);
 
@@ -152,6 +225,25 @@ int main(int argc, char *argv[]) {
   gpioWaveClear(); /* clear all waveforms */
 
   rawWaveAddGeneric(3, pps); /* add data to waveform */
+
+  gpioSetMode(UDP_TRIGGER_GPIO, PI_OUTPUT);
+
+  nmea[0].gpioOn = 0;
+  nmea[0].gpioOff = (1 << UDP_TRIGGER_GPIO);
+  nmea[0].usDelay = SLACK;
+  nmea[0].flags = 0;
+
+  nmea[1].gpioOn = 0;
+  nmea[1].gpioOff = (1 << UDP_TRIGGER_GPIO);
+  nmea[1].usDelay = PPS_PULSE + 100000;  // 100ms
+  nmea[1].flags = 0;
+
+  nmea[2].gpioOn = (1 << UDP_TRIGGER_GPIO);
+  nmea[2].gpioOff = 0;
+  nmea[2].usDelay = INTERVAL - (SLACK + PPS_PULSE + 100000);
+  nmea[2].flags = 0;
+
+  rawWaveAddGeneric(3, nmea); /* add data to waveform */
 
   for (int cam_idx = 0; cam_idx < NUM_CAMERAS; cam_idx++) {
     gpioSetMode(cam_gpio[cam_idx], PI_OUTPUT);
