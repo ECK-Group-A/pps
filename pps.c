@@ -131,6 +131,8 @@ int udp_connect(char *host, int port) {
   addr.sin_port = htons(port);
   addr.sin_addr.s_addr = inet_addr(host);
 
+  // UDP is connectionless, so we don't need to close the socket afterwards!
+  // This only specifies a default host endpoint.
   if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
     perror("connect");
     return -1;
@@ -185,9 +187,13 @@ int main(int argc, char *argv[]) {
   rawWaveInfo_t winf;
 
   // Connect to UDP socket
-  sock = udp_connect("1.1.1.1", 10110);
+  if (sock = udp_connect("1.1.1.1", 10110) < 0) {
+    perror("udp_connect");
+    return -1;
+  }
 
   if (gpioInitialise() < 0) {
+    perror("gpioInitialise");
     return -1;
   }
 
