@@ -12,8 +12,6 @@
 /*
 
 pps.c
-2020-09-18
-Public Domain
 
 gcc -o pps pps.c -lpigpio
 
@@ -22,12 +20,12 @@ sudo ./pps
 */
 
 #define PPS_GPIO 4          /* gpio for output pulse */
+#define UDP_TRIGGER_GPIO 30 /* gpio for output UDP trigger signal */
 #define PPS_PULSE 10000     /* pulse length in microseconds */
 #define TRIGGER_PULSE 200   /* pulse length in microseconds */
 #define INTERVAL 1000000    /* pulse every second */
 #define SLACK 200           /* slack period to correct time */
 #define NUM_CAMERAS 2       /* number of cameras used */
-#define UDP_TRIGGER_GPIO 30 /* gpio to output the UDP trigger signal to */
 
 // GPIO 30 is reserved
 static const int cam_gpio[NUM_CAMERAS] = {17, 27};
@@ -66,8 +64,6 @@ void callback(int gpio, int level, uint32_t tick) {
     */
 
     pulse_tick = rawWaveGetIn(0); /* tick read at pulse start */
-    now_tick = gpioTick();        /* just for interest, to get an idea
-                                     of scheduling delays */
 
     tick_diff = 10000000;
 
@@ -83,29 +79,23 @@ void callback(int gpio, int level, uint32_t tick) {
 
         stamp_tick = tick1;
 
-        stamp_micro = ((tp.tv_sec % 1) * 1000000) + ((tp.tv_nsec + 500) / 1000);
+        stamp_micro = (tp.tv_nsec + 500) / 1000;
 
         if (tick_diff == 0) break;
       }
     }
 
+    /* correct if early */
+    if (stamp_micro > (INTERVAL / 2)) stamp_micro -= INTERVAL;
+    offby = stamp_micro - (stamp_tick - pulse_tick);
+
     if (inited) {
-      /* correct if early */
-      if (stamp_micro > (INTERVAL / 2)) stamp_micro -= INTERVAL;
-      offby = stamp_micro - (stamp_tick - pulse_tick);
       drift += offby / 2; /* correct drift, bit of lag */
     } else {
-      offby = 0;
       drift = 0;
     }
 
-    nextPulse = INTERVAL - stamp_micro;
-    nextPulseTick = stamp_tick + nextPulse - drift;
-
-    delay = nextPulseTick - pulse_tick;
-
-    fixed = INTERVAL - SLACK;
-    slack = delay - fixed;
+    slack = SLACK - offby - drift;
 
     if (slack < 0) {
       slack += INTERVAL;
@@ -116,10 +106,9 @@ void callback(int gpio, int level, uint32_t tick) {
     *g_slackA = (slack * 4);
 
     if (inited) {
-      printf("%8d %5d %5d %5d %5d\n", count++, drift, offby,
-             now_tick - pulse_tick, slack);
+      printf("%8d %5d %5d %5d\n", count++, drift, offby, slack);
     } else {
-      printf("#  count drift offby sched slack\n");
+      printf("#  count drift offby slack\n");
       inited = 1;
     }
   }
