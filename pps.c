@@ -9,6 +9,7 @@
 #include <time.h>
 #include <unistd.h>
 
+
 /*
 
 pps.c
@@ -47,7 +48,9 @@ void callback(int gpio, int level, uint32_t tick) {
   uint32_t pulse_tick, now_tick;
   uint32_t tick1, tick2, tick_diff;
   uint32_t nextPulse, nextPulseTick, delay, fixed;
+  uint32_t secondsToday;
   struct timespec tp;
+  
 
   if (level) {
     /*
@@ -107,6 +110,24 @@ void callback(int gpio, int level, uint32_t tick) {
 
     if (inited) {
       printf("%8d %5d %5d %5d\n", count++, drift, offby, slack);
+
+      //setup logger
+      char fileName [20];
+      char filePath[40];
+      char timeBuffer[80];
+      strftime(fileName, sizeof fileName, "log%d-%m-%Y.txt", gmtime(&tp.tv_sec));
+      sprintf(filePath, "/home/pi/Raspi_Triggerbox/%s", fileName);
+      FILE *log = fopen(filePath, "a"); 
+      if(log == NULL){
+        perror("Error: ");
+      }
+      else{
+        secondsToday = tp.tv_sec%(24*60*60);
+        fprintf(log, "%lu %5d %5d %5d\n", secondsToday, drift, offby, slack);
+        fclose(log);
+      }
+
+
     } else {
       printf("#  count drift offby slack\n");
       inited = 1;
@@ -196,6 +217,7 @@ int main(int argc, char *argv[]) {
     perror("gpioInitialise");
     return -1;
   }
+  
 
   gpioSetAlertFunc(PPS_GPIO, callback);               /* set pps callback */
   gpioSetAlertFunc(UDP_TRIGGER_GPIO, send_nmea_time); /* set udp callback */
