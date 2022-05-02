@@ -116,7 +116,7 @@ void callback(int gpio, int level, uint32_t tick) {
       char filePath[40];
       char timeBuffer[80];
       strftime(fileName, sizeof fileName, "log%d-%m-%Y.txt", gmtime(&tp.tv_sec));
-      sprintf(filePath, "/home/pi/Raspi_Triggerbox/%s", fileName);
+      sprintf(filePath, "/home/pi/Raspi_Triggerbox/log/%s", fileName);
       FILE *log = fopen(filePath, "a"); 
       if(log == NULL){
         perror("Error: ");
