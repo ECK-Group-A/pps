@@ -1,0 +1,16 @@
+
+[Unit]
+Description=Trigger box that administers lidar sync pulses and camera trigger pulses
+Before=ntp.service
+Before=gpsd.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/pi/Raspi_Triggerbox
+ExecStart=/bin/bash -c 'cd /home/pi/Raspi_Triggerbox && sudo taskset -c 3 ./pps'
+RestartSec=5
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
