@@ -29,7 +29,7 @@ sudo ./pps [Cam1PhaseInDegrees Cam2PhaseInDegrees Cam3PhaseInDegrees ...]
 #define MAX_CAMERAS 6       /* max number of cameras used */
 
 // GPIO 30 is reserved
-static const int cam_gpio[MAX_CAMERAS] = {21, 5, 6, 13, 19, 26};
+static const int cam_gpio[MAX_CAMERAS] = {21, 5, 6, 13, 25, 26};
 
 static uint32_t *g_slackA;
 
