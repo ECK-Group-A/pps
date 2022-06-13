@@ -15,7 +15,7 @@ pps.c
 
 gcc -o pps pps.c -lpigpio
 
-sudo ./pps
+sudo ./pps [Cam1PhaseInDegrees Cam2PhaseInDegrees Cam3PhaseInDegrees ...]
 
 */
 
@@ -25,11 +25,10 @@ sudo ./pps
 #define TRIGGER_PULSE 200   /* pulse length in microseconds */
 #define INTERVAL 1000000    /* pulse every second */
 #define SLACK 200           /* slack period to correct time */
-#define NUM_CAMERAS 2       /* number of cameras used */
+#define MAX_CAMERAS 6       /* max number of cameras used */
 
 // GPIO 30 is reserved
-static const int cam_gpio[NUM_CAMERAS] = {17, 27};
-static const int cam_phase[NUM_CAMERAS] = {0, 180};
+static const int cam_gpio[MAX_CAMERAS] = {2, 3, 4, 17, 27, 22};
 
 static uint32_t *g_slackA;
 
@@ -182,9 +181,20 @@ void send_nmea_time(int gpio, int level, uint32_t tick) {
 int main(int argc, char *argv[]) {
   int off;
   int wave_id;
+  int num_cameras = argc-1 < MAX_CAMERAS ? argc-1 : MAX_CAMERAS;
+  int cam_phase[num_cameras];
   rawWave_t pps[3];
   rawWave_t nmea[3];
   rawWaveInfo_t winf;
+
+  printf("There are %d cameras defined:\n", num_cameras);
+
+  for (int i = 0; i < num_cameras; i++) {
+    cam_phase[i] = atoi(argv[i+1]);
+    printf("  - CAM %2d, GPIO %2d, PHASE %3d\n", i, cam_gpio[i], cam_phase[i]);
+  }
+
+  printf("\n");
 
   // Connect to UDP socket
   if (sock = udp_connect("1.1.1.1", 10110) < 0) {
@@ -240,7 +250,7 @@ int main(int argc, char *argv[]) {
 
   rawWaveAddGeneric(3, nmea); /* add data to waveform */
 
-  for (int cam_idx = 0; cam_idx < NUM_CAMERAS; cam_idx++) {
+  for (int cam_idx = 0; cam_idx < num_cameras; cam_idx++) {
     gpioSetMode(cam_gpio[cam_idx], PI_OUTPUT);
     rawWave_t camera[22];
 
