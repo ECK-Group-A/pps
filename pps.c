@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <pigpio.h>
 #include <stdarg.h>
@@ -114,10 +115,9 @@ void callback(int gpio, int level, uint32_t tick) {
 }
 
 // Connect to udp broadcast socket
-int udp_connect(char *host, int port) {
-  int sock;
+int udp_connect(int port) {
   struct sockaddr_in addr;
-  int broadcast = 1;
+  int broadcastPermission;
 
   sock = socket(AF_INET, SOCK_DGRAM, 0);
   if (sock < 0) {
@@ -125,10 +125,16 @@ int udp_connect(char *host, int port) {
     return -1;
   }
 
+  broadcastPermission = 1;
+  if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (void *)&broadcastPermission,
+                 sizeof(broadcastPermission)) < 0) {
+    perror("setsockopt(SO_BROADCAST) failed");
+  }
+
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
-  addr.sin_addr.s_addr = inet_addr(host);
+  addr.sin_addr.s_addr = INADDR_BROADCAST;
 
   // UDP is connectionless, so we don't need to close the socket afterwards!
   // This only specifies a default host endpoint.
@@ -153,7 +159,7 @@ unsigned char nmea_checksum(char *sentence) {
 }
 
 // Send NMEA sentence
-int nmea_send(int sock, char *sentence) {
+int nmea_send(char *sentence) {
   char buffer[1024];
   int len;
 
@@ -174,14 +180,14 @@ void send_nmea_time(int gpio, int level, uint32_t tick) {
             "02d,000.0,W,S",
             tm->tm_hour, tm->tm_min, tm->tm_sec, tm->tm_mday, tm->tm_mon + 1,
             (tm->tm_year + 1900) % 100);
-    nmea_send(sock, nmea);
+    nmea_send(nmea);
   }
 }
 
 int main(int argc, char *argv[]) {
   int off;
   int wave_id;
-  int num_cameras = argc-1 < MAX_CAMERAS ? argc-1 : MAX_CAMERAS;
+  int num_cameras = argc - 1 < MAX_CAMERAS ? argc - 1 : MAX_CAMERAS;
   int cam_phase[num_cameras];
   rawWave_t pps[3];
   rawWave_t nmea[3];
@@ -190,14 +196,14 @@ int main(int argc, char *argv[]) {
   printf("There are %d cameras defined:\n", num_cameras);
 
   for (int i = 0; i < num_cameras; i++) {
-    cam_phase[i] = atoi(argv[i+1]);
+    cam_phase[i] = atoi(argv[i + 1]);
     printf("  - CAM %2d, GPIO %2d, PHASE %3d\n", i, cam_gpio[i], cam_phase[i]);
   }
 
   printf("\n");
 
   // Connect to UDP socket
-  if (sock = udp_connect("1.1.1.1", 10110) < 0) {
+  if (udp_connect(10110) < 0) {
     perror("udp_connect");
     return -1;
   }
