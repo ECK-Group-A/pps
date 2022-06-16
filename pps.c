@@ -21,7 +21,7 @@ sudo ./pps [Cam1PhaseInDegrees Cam2PhaseInDegrees Cam3PhaseInDegrees ...]
 */
 
 #define PPS_GPIO 4          /* gpio for output pulse */
-#define UDP_TRIGGER_GPIO 30 /* gpio for output UDP trigger signal */
+#define UDP_TRIGGER_GPIO 12 /* gpio for output UDP trigger signal */
 #define PPS_PULSE 10000     /* pulse length in microseconds */
 #define TRIGGER_PULSE 200   /* pulse length in microseconds */
 #define INTERVAL 1000000    /* pulse every second */
@@ -29,7 +29,7 @@ sudo ./pps [Cam1PhaseInDegrees Cam2PhaseInDegrees Cam3PhaseInDegrees ...]
 #define MAX_CAMERAS 6       /* max number of cameras used */
 
 // GPIO 30 is reserved
-static const int cam_gpio[MAX_CAMERAS] = {2, 3, 4, 17, 27, 22};
+static const int cam_gpio[MAX_CAMERAS] = {21, 5, 6, 13, 19, 26};
 
 static uint32_t *g_slackA;
 
@@ -291,6 +291,8 @@ int main(int argc, char *argv[]) {
         camera[2 * i + 3].flags = 0;
       }
     }
+
+    rawWaveAddGeneric(22, camera); /* add data to waveform */
   }
 
   wave_id = gpioWaveCreate(); /* create waveform from added data */
