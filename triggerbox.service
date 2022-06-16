@@ -8,7 +8,7 @@ Before=gpsd.service
 Type=simple
 User=root
 WorkingDirectory=/home/pi/Raspi_Triggerbox
-ExecStart=/bin/bash -c 'cd /home/pi/Raspi_Triggerbox && sudo taskset -c 3 ./pps'
+ExecStart=/bin/bash -c 'cd /home/pi/pps && sudo taskset -c 3 ./pps'
 RestartSec=5
 Restart=always
 
