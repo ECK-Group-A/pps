@@ -1,7 +1,7 @@
 #Place in etc/systemd/system
 [Unit]
 Description=Trigger box that administers lidar sync pulses and camera trigger pulses
-Before=ntp.service
+Before=chrony.service
 Before=gpsd.service
 
 [Service]
