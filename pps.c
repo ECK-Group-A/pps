@@ -35,8 +35,10 @@ static uint32_t *g_slackA;
 
 int sock;
 time_t timer;
-struct tm *tm;
+struct tm *tm; 
 
+//This is the callback function that gets called whenever the output PPS pin goes high (this the the one providing the lidar with a PPS)
+//This function 
 void callback(int gpio, int level, uint32_t tick) {
   static int inited = 0, drift = 0, count = 0;
 
@@ -47,7 +49,7 @@ void callback(int gpio, int level, uint32_t tick) {
   uint32_t pulse_tick, now_tick;
   uint32_t tick1, tick2, tick_diff;
   uint32_t nextPulse, nextPulseTick, delay, fixed;
-  struct timespec tp;
+  struct timespec tp; //timestruct containing time in ns
 
   if (level) {
     /*
@@ -68,35 +70,44 @@ void callback(int gpio, int level, uint32_t tick) {
     tick_diff = 10000000;
 
     for (i = 0; i < 10; i++) {
-      tick1 = gpioTick();
+      tick1 = gpioTick(); //systemticks since boot in us
 
       clock_gettime(CLOCK_REALTIME, &tp);
 
       tick2 = gpioTick();
 
-      if ((tick2 - tick1) < tick_diff) {
+      // check if it actually got the timestamp if it's 0s or more than 1s there is something wrong.
+      if ((tick2 - tick1) < tick_diff) { 
         tick_diff = tick2 - tick1;
 
-        stamp_tick = tick1;
-
-        stamp_micro = (tp.tv_nsec + 500) / 1000;
+        stamp_tick = tick1; 
+        
+        // I don't think the 500 ns offset is necessary but I am scared to change it
+        //stamp_micro is now the variable holding the timestamp from the start of the PPS pulse in us.
+        stamp_micro = (tp.tv_nsec + 500) / 1000; 
 
         if (tick_diff == 0) break;
       }
     }
 
     /* correct if early */
+    //this line is very suspicious since stamp_micro will nearly always be more than interval over 2 so it's always a second behind maybe not relevant anymore
     if (stamp_micro > (INTERVAL / 2)) stamp_micro -= INTERVAL;
-    offby = stamp_micro - (stamp_tick - pulse_tick);
+ 
+    //this is the correction for the slow systime timestamp because all the processing also takes a little time.
+    offby = stamp_micro - (stamp_tick - pulse_tick); 
 
     if (inited) {
-      drift += offby / 2; /* correct drift, bit of lag */
+      drift += offby / 2; /* correct drift because there is a bit of lag */
     } else {
       drift = 0;
     }
 
+    //real slack is (set slack) - (processing time) -  (drift)
+    //We subtract the drift because we don't want the timing to drift away over time so this increases stabillity
     slack = SLACK - offby - drift;
 
+    //if we completely miss the mark just increase the slack with interval to aim for the next pulse.
     if (slack < 0) {
       slack += INTERVAL;
     }
@@ -169,6 +180,7 @@ int nmea_send(char *sentence) {
   return send(sock, buffer, len, 0);
 }
 
+//formats and then sends the nmea time in the form of a GPRMC message the location is null island and only the time matters
 void send_nmea_time(int gpio, int level, uint32_t tick) {
   if (level) {
     char nmea[1024];
@@ -272,6 +284,7 @@ int main(int argc, char *argv[]) {
     camera[1].usDelay = phase;
     camera[1].flags = 0;
 
+    //the cameras trigger at 10Hz so we do this ten times
     for (int i = 0; i < 10; i++) {
       camera[2 * i + 2].gpioOn = (1 << cam_gpio[cam_idx]);
       camera[2 * i + 2].gpioOff = 0;
@@ -286,8 +299,7 @@ int main(int argc, char *argv[]) {
       } else {
         camera[2 * i + 3].gpioOn = 0;
         camera[2 * i + 3].gpioOff = (1 << cam_gpio[cam_idx]);
-        camera[2 * i + 3].usDelay =
-            (1000000 / 10) - TRIGGER_PULSE - SLACK - phase;
+        camera[2 * i + 3].usDelay = (1000000 / 10) - TRIGGER_PULSE - SLACK - phase;
         camera[2 * i + 3].flags = 0;
       }
     }
