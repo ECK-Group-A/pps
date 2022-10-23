@@ -9,6 +9,7 @@ Type=simple
 User=root
 EnvironmentFile=/etc/triggerbox.conf
 WorkingDirectory=/home/pi/pps
+#start the service in /home/pi/pps run the code only on core 3 with camera angles C1 C2 ... C6 which are stored in /etc/triggerbox.conf
 ExecStart=/bin/bash -c 'cd /home/pi/pps && sudo taskset -c 3 ./pps $C1 $C2 $C3 $C4 $C5 $C6'
 RestartSec=5
 Restart=always
